@@ -38,6 +38,10 @@ Feature: Initialize mod-data-export-spring integration tests
       | 'data-export.job.item.download'                               |
       | 'data-export.job.item.get'                                    |
       | 'data-export.job.item.resend'                                 |
+      | 'orders-storage.claim-sequences.item.get'                     |
+      | 'orders-storage.claim-sequences.item.post'                    |
+      | 'orders-storage.claim-sequences.item.put'                     |
+      | 'orders-storage.claiming.process.execute'                     |
       | 'orders.collection.get'                                       |
       | 'orders.item.get'                                             |
       | 'orders.item.post'                                            |
@@ -45,6 +49,8 @@ Feature: Initialize mod-data-export-spring integration tests
       | 'orders.pieces.collection.get'                                |
       | 'orders.pieces.collection.put'                                |
       | 'orders.pieces.item.post'                                     |
+      | 'orders.pieces.item.get'                                      |
+      | 'orders.pieces.item.put'                                      |
       | 'orders.po-lines.collection.get'                              |
       | 'orders.po-lines.item.get'                                    |
       | 'orders.po-lines.item.post'                                   |

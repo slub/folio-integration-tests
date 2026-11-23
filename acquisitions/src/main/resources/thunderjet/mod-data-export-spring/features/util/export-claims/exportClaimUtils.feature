@@ -150,8 +150,9 @@ Feature: Init Data for Claims Export
 
   @CreateLatePieceForVendor
   Scenario: createLatePieceForVendor
-    # parameters: orgId, poNumber, poLineNumber, acqMethodId, pieceId, currentDate
-    # Creates an open order for an existing vendor with one PO line using the given acquisition method and one Late piece
+    # parameters: orgId, poNumber, poLineNumber, acqMethodId, pieceId, currentDate, claimSequenceId (optional)
+    # Creates an open order for an existing vendor with one PO line using the given acquisition method and one Late piece.
+    # With claimSequenceId the PO line is claimed by that claim sequence
 
     * def orderId = call uuid
     * def orderData = karate.read('classpath:thunderjet/mod-data-export-spring/features/samples/export-claims/order.json')
@@ -163,6 +164,8 @@ Feature: Init Data for Claims Export
     * def poLineId = call uuid
     * def poLineData = karate.read('classpath:thunderjet/mod-data-export-spring/features/samples/export-claims/order-line.json')
     * set poLineData.acquisitionMethod = acqMethodId
+    * def claimSequenceId = karate.get('claimSequenceId', null)
+    * if (claimSequenceId != null) karate.set('poLineData', '$.claimSequenceId', claimSequenceId)
     Given path '/orders/order-lines'
     And request poLineData
     When method POST
@@ -182,3 +185,74 @@ Feature: Init Data for Claims Export
     And request pieceData
     When method POST
     Then status 201
+
+
+  @CreateClaimSequence
+  Scenario: createClaimSequence
+    # parameters: sequenceId, sequenceName, stages, afterLastStage (optional), isActive (optional)
+    * def afterLastStage = karate.get('afterLastStage', null)
+    * def isActive = karate.get('isActive', null)
+    Given path 'orders-storage/claim-sequences'
+    And request { id: '#(sequenceId)', name: '#(sequenceName)', stages: '#(stages)', afterLastStage: '##(afterLastStage)', isActive: '##(isActive)' }
+    When method POST
+    Then status 201
+
+
+  @ExpireClaim
+  Scenario: expireClaim
+    # parameters: pieceId
+    # Simulates the passing of the claim interval: moves statusUpdatedDate of a 'Claim sent' piece into the past
+    # (claimingInterval untouched) and runs the claiming timer, which sets the piece back to Late
+    Given path 'orders/pieces', pieceId
+    When method GET
+    Then status 200
+    And match response.receivingStatus == 'Claim sent'
+    * def piece = response
+    * set piece.statusUpdatedDate = '2024-01-23T12:50:03.156+00:00'
+    Given path 'orders/pieces', pieceId
+    And request piece
+    When method PUT
+    Then status 204
+
+    Given path 'orders-storage/claiming/process'
+    When method POST
+    Then status 200
+
+    * configure retry = { count: 10, interval: 3000 }
+    Given path 'orders/pieces', pieceId
+    And retry until response.receivingStatus == 'Late'
+    When method GET
+    Then status 200
+
+
+  @VerifyPieceClaim
+  Scenario: verifyPieceClaim
+    # parameters: pieceId, receivingStatus, claimSequenceId, stage, interval
+    Given path 'orders/pieces', pieceId
+    When method GET
+    Then status 200
+    And match response.receivingStatus == receivingStatus
+    And match response.claim.sequence == { id: '#(claimSequenceId)', stage: '#(stage)' }
+    And match response.claimingInterval == interval
+
+
+  @GetClaimsJobsOfConfig
+  Scenario: getClaimsJobsOfConfig
+    # parameters: configId, expectedCount
+    # Waits until the Claims export config has exactly expectedCount jobs and returns them as 'jobs'
+    * def ofConfig =
+      """
+      function(jobRecords) {
+        return karate.filter(jobRecords, function(job) {
+          return job.exportTypeSpecificParameters.vendorEdiOrdersExportConfig.exportConfigId == configId;
+        });
+      }
+      """
+    * configure retry = { count: 10, interval: 3000 }
+    Given path 'data-export-spring/jobs'
+    And param query = '(type==CLAIMS)'
+    And param limit = 1000
+    And retry until ofConfig(response.jobRecords).length == expectedCount
+    When method GET
+    Then status 200
+    * def jobs = ofConfig(response.jobRecords)
